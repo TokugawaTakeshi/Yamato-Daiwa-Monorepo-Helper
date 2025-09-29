@@ -1,0 +1,25 @@
+﻿{
+
+  "compilerOptions": {
+
+    "target": "ESNext",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+
+    "removeComments": true,
+
+    "outDir": "Build/"
+
+  },
+
+  "include": [ "Source/**/*" ]
+
+}
