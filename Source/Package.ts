@@ -126,7 +126,7 @@ class Package {
 
   public symlinkifyDependencies(): this {
 
-    /* [ Theory ] No need to symlinkify the peer dependencies during preparation to production. */
+    /* [ Theory ] No need to symlinkify the peer dependencies until the preparation to deploying. */
     for (const [ packageName, pathRelativeMonorepoRootDirectory ] of this.internalDependencies.entries()) {
 
       if (isNotUndefined(this.metadataFile.content.dependencies?.[packageName])) {
@@ -143,10 +143,14 @@ class Package {
 
   }
 
+  public async savePackageJSON_File(): Promise<void> {
+    return this.metadataFile.save();
+  }
+
   public async installDependenciesWhichRequired(): Promise<void> {
 
     Logger.logInfo({
-      title: "Installing dependencies",
+      title: "Installing of dependencies",
       description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })`,
       compactLayout: true
     });
@@ -163,7 +167,7 @@ class Package {
             cwd: this.rootDirectoryAbsolutePath,
             encoding: "utf-8"
           },
-          (error: ChildProcess.ExecException | null, stdout: string): void => {
+          (error: ChildProcess.ExecException | null, standardOutput: string): void => {
 
             if (isNotNull(error)) {
 
@@ -185,13 +189,79 @@ class Package {
               compactLayout: true
             });
 
-            /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-            console.log(stdout);
+            Logger.logGeneric(standardOutput);
 
             resolve();
 
           }
         );
+
+      }
+    );
+
+  }
+
+  public async auditAndFixVulnerabilitiesWhichPossible(): Promise<void> {
+
+    let npmAuditReport: string | null;
+
+    return new Promise<void>(
+      (resolve: () => void, reject: (error: ChildProcess.ExecException) => void): void => {
+
+        /* [ Theory ]
+         * During the tests, the 3rd parameter of `ChildProcess.exec`'s callback was always empty, and the callback of
+         *   `childProcess.stderr?.on("data", (data: string): void => {});` never called even when there are some
+         *   automatically unfixable vulnerabilities. */
+        const childProcess: ChildProcess.ChildProcess = ChildProcess.exec(
+          "npm audit fix",
+          {
+            cwd: this.rootDirectoryAbsolutePath,
+            encoding: "utf-8"
+          },
+          (error: ChildProcess.ExecException | null): void => {
+
+            if (isNotNull(error)) {
+
+              if (isNotNull(npmAuditReport)) {
+
+                Logger.logWarning({
+                  title: "Automatically Unfixable Vulnerabilities Detected",
+                  description:
+                      `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })\n` +
+                      npmAuditReport
+                });
+
+                resolve();
+                return;
+
+              }
+
+              Logger.logErrorLikeMessage({
+                title: "Vulnerabilities inspection, error occurred",
+                description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
+                compactLayout: true
+              });
+
+              reject(error);
+              return;
+
+            }
+
+
+            resolve();
+
+          }
+        );
+
+        childProcess.stdout?.on("data", (data: string): void => {
+
+          const trimmedData: string = data.trim();
+
+          if (trimmedData.startsWith("# npm audit report")) {
+            npmAuditReport = trimmedData;
+          }
+
+        });
 
       }
     );
@@ -214,21 +284,36 @@ class Package {
         /* [ Theory ]
          * Usually no additional output will be on `stdout` or stderr` during execution, it is fine to listen only the
          *   process completions. */
-        ChildProcess.exec(
+        const childProcess: ChildProcess.ChildProcess = ChildProcess.exec(
           `npm run "${ this.productionBuildingScript }"`,
           {
             cwd: this.rootDirectoryAbsolutePath,
             encoding: "utf-8"
           },
-          (error: ChildProcess.ExecException | null, stdout: string): void => {
+          (error: ChildProcess.ExecException | null, standardOutput: string): void => {
+
+            /* [ Theory ]
+             * ● `exec` does not support colored output. See https://github.com/nodejs/help/issues/2183.
+             * ● When the building is successful, the `standardOutput` will be like:
+             * ```bash
+             * > @yamato-daiwa/es-extensions@1.8.6-experimental.3 Rebuild Distributable
+             * > rimraf Distributable && tsc -p tsconfig-cjs.json && tsc -p tsconfig-esm.json
+             * ```
+             * ● When the building fails, the `standardOutput` will include the TypeScript errors. And the `standardError`,
+             *    the omitted third parameter of the callback will be even with stringified `error`.
+             * ● No output has been registered in `childProcess.stderr?.on("data", () => {})` during the testing.
+             */
 
             if (isNotNull(error)) {
 
               Logger.logErrorLikeMessage({
-                title: "Production building, error occurred",
-                description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
-                compactLayout: true
+                title: "Production Building, Error Occurred",
+                description:
+                    `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }). ` +
+                    "It must be resolved before publishing of the package.\n\n" +
+                    standardOutput
               });
+
 
               reject(error);
               return;
@@ -242,10 +327,31 @@ class Package {
               compactLayout: true
             });
 
-            /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-            console.log(stdout);
-
             resolve();
+
+          }
+        );
+
+        childProcess.stdout?.on(
+          "data",
+          (data: string): void => {
+
+            /* [ Theory ] For the output like
+             * ```
+             * > @yamato-daiwa/es-extensions@1.8.6-experimental.3 Rebuild Distributable
+             * > rimraf Distributable && tsc -p tsconfig-cjs.json && tsc -p tsconfig-esm.json
+             * ```
+             * */
+            if (data.trim().startsWith(">")) {
+              Logger.logGeneric(data.trim());
+            }
+
+
+            /* [ Theory ]
+             * The errored output like
+             * `NNN.ts(789,5): error TS6133: 'a' is declared but its value is never read.`
+             * will also be here, but is will be printed in the above callback.
+             * */
 
           }
         );
@@ -255,7 +361,15 @@ class Package {
 
   }
 
-  public async publish(): Promise<void> {
+  public async publish(
+    {
+      distributionTag,
+      npmToken
+    }: Readonly<{
+      distributionTag?: string;
+      npmToken: string;
+    }>
+  ): Promise<void> {
 
     Logger.logInfo({
       title: "Publishing",
@@ -267,34 +381,44 @@ class Package {
       (resolve: () => void, reject: (error: ChildProcess.ExecException) => void): void => {
 
         const childProcess: ChildProcess.ChildProcess = ChildProcess.exec(
-          "npm publish",
+          [
+            "npm publish",
+            ...isNonEmptyString(distributionTag) ? [ "--tag", distributionTag ] : []
+          ].join(" "),
           {
             cwd: this.rootDirectoryAbsolutePath,
-            encoding: "utf-8"
+            encoding: "utf-8",
+            env: { NPM_TOKEN: npmToken }
           },
-          (error: ChildProcess.ExecException | null, stdout: string): void => {
+          (error: ChildProcess.ExecException | null): void => {
 
+            /* [ Theory ]
+             * ● `exec` does not support colored output. See https://github.com/nodejs/help/issues/2183.
+             * ● Normally, nothing useful in the `standardOutput`, just at sign separated package name and version.
+             *   Most output going from `standardError`.
+             */
             if (isNotNull(error)) {
 
               if (error.message.includes("You cannot publish over the previously published versions")) {
 
                 Logger.logWarning({
                   title: "Already published, skipping",
-                  description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`
+                  description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
+                  compactLayout: true
                 });
 
                 resolve();
-
                 return;
 
               }
 
 
               Logger.logErrorLikeMessage({
-                title: "Publishing, error occurred",
-                description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
+                title: "Package Publishing, Error Occurred",
+                description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }). `,
                 compactLayout: true
               });
+
 
               reject(error);
               return;
@@ -303,27 +427,28 @@ class Package {
 
 
             Logger.logSuccess({
-              title: "Published",
-              description:
-                  `${ this.rootDirectoryPathRelativeToMonorepoRoot }, version ${ this.metadataFile.content.version }`
+              title: "Package Publishing Complete",
+              description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })`,
+              compactLayout: true
             });
-
-            /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-            console.log(stdout);
 
             resolve();
 
           }
         );
 
-
-        /* [ Theory ] There is a significant output even with no errors */
         childProcess.stderr?.on(
           "data",
           (data: string): void => {
 
-            /* eslint-disable-next-line no-console -- The data should be output as is, preserving the formatting if any. */
-            console.error(data);
+            const trimmedOutput: string = data.trim();
+
+            if (trimmedOutput.startsWith("npm notice")) {
+              Logger.logGeneric(trimmedOutput);
+            }
+
+
+            /* [ Approach ] The errored output will be processed in an on ended callback. */
 
           }
         );
@@ -333,7 +458,15 @@ class Package {
 
   }
 
-  public async replaceSymlinkifiedDependenciesWithPublishedOnes(): Promise<void> {
+  public async replaceSymlinkifiedDependenciesWithPublishedOnes(
+    {
+      distributionTag,
+      npmToken
+    }: Readonly<{
+      distributionTag?: string;
+      npmToken: string;
+    }>
+  ): Promise<void> {
 
     if (isUndefined(this.metadataFile.content.version)) {
       Logger.throwErrorWithFormattedMessage({
@@ -342,14 +475,14 @@ class Package {
           customMessage: "The \"version\" field is required to work with dependencies inside the monorepo."
         }),
         title: InvalidExternalDataError.localization.defaultTitle,
-        occurrenceLocation: "package.replaceSymlinkifiedDependenciesWithPublishedOnes()"
+        occurrenceLocation: "package.replaceSymlinkifiedDependenciesWithPublishedOnes(compoundParameter)"
       });
     }
 
 
     const namesOfPackagesWhichMayBeAmongPeerDependencies: Set<string> = new Set();
 
-    /* [ Theory ] No need to symlinkify thus desymlinkify the peer dependencies during the preparation to production. */
+    /* [ Theory ] No need to symlinkify thus desymlinkify the peer dependencies during the preparation for production. */
     for (const packageName of this.internalDependencies.keys()) {
 
       if (isNotUndefined(this.metadataFile.content.dependencies?.[packageName])) {
@@ -370,6 +503,7 @@ class Package {
 
         this.metadataFile.content.peerDependencies[nameOfPackageWhichMayBeAmongPeerDependencies] =
             this.metadataFile.content.version;
+
       }
 
     }
@@ -377,19 +511,20 @@ class Package {
     await this.metadataFile.save();
 
 
-     Logger.logInfo({
-      title: "Replacing the symlinks with published packages...",
-      description: this.rootDirectoryPathRelativeToMonorepoRoot,
+    Logger.logInfo({
+      title: "Replacing the symlinks with published packages",
+      description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })`,
       compactLayout: true
     });
 
-    /* [ Theory : npm ]
-     * If just to run the "npm install", previously symlinkified dependencies will NOT be installed from the npm, thus
-     *   the symlinks will be kept what does not match to intended behavior of "@yamato-daiwa/monorepo-helper".
-     * To replace the symlinks with files installed from npm registry, both "package-lock.json" and "node_modules" must be
-     *   deleted (checked for npm v 10.9.0).
-     * For some cases, it is enough to delete the "package-lock.json" and only symlinkified "node_modules", but the
-     *   removing of whole "node_modules" if safer.  */
+
+    /* [ Theory: npm ]
+     * If just to run the "npm install", previously symlinked dependencies will NOT be installed from the npm, thus
+     *   the symlinks will be kept what does not match to the intended behavior of "@yamato-daiwa/monorepo-helper".
+     * To replace the symlinks with files installed from the npm registry, both "package-lock.json" and "node_modules"
+     *   must be deleted (checked for npm v 10.9.0).
+     * For some cases, it is enough to delete the "package-lock.json" and only symlinked "node_modules", but the
+     *   removing of whole "node_modules" is more safe.  */
     await Promise.all([
       FilesAndDirectoriesDeleter.rimraf(
         Path.join(this.rootDirectoryAbsolutePath, "package-lock.json")
@@ -399,99 +534,66 @@ class Package {
       )
     ]);
 
-    ChildProcess.exec(
-      "npm cache verify",
-      {
-        cwd: this.rootDirectoryAbsolutePath,
-        encoding: "utf-8"
-      },
-      (error: ChildProcess.ExecException | null, stdout: string, stderr: string): void => {
+    Logger.logInfo({
+      title: "Refreshing of the npm cache ...",
+      description: "Need to refresh the npm cache to install just published dependency from the npm repository."
+    });
 
-        if (isNotNull(error)) {
-
-          Logger.logErrorLikeMessage({
-            title: "The error has occurred during the refreshing of npm cache",
-            description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
-            compactLayout: true
-          });
-
-          console.error(stderr);
-
-        }
-
-        /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-        console.log(stdout);
-
-      }
-    );
-
+    await this.refreshNPM_Cache();
 
     await this.installDependenciesWhichRequired();
+
+    await this.auditAndFixVulnerabilitiesWhichPossible();
 
     ChildProcess.exec(
       "git add package-lock.json",
       {
         cwd: this.rootDirectoryAbsolutePath,
         encoding: "utf-8"
-      },
-      (error: ChildProcess.ExecException | null, stdout: string): void => {
-
-        if (isNotNull(error)) {
-          Logger.logErrorLikeMessage({
-            title: "Dependencies installation, error occurred",
-            description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
-            compactLayout: true
-          });
-        }
-
-
-        Logger.logSuccess({
-          title: "Dependencies has been installed",
-          description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })`,
-          compactLayout: true
-        });
-
-        /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-        console.log(stdout);
-
       }
     );
 
     await this.executeProductionBuilding();
 
-    ChildProcess.exec(
-      "npm publish",
-      {
-        cwd: this.rootDirectoryAbsolutePath,
-        encoding: "utf-8"
-      },
-      (error: ChildProcess.ExecException | null, stdout: string): void => {
-
-        if (isNotNull(error)) {
-          Logger.logErrorLikeMessage({
-            title: "Publishing, error occurred",
-            description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).`,
-            compactLayout: true
-          });
-        }
-
-
-        Logger.logSuccess({
-          title: "Publishing successful",
-          description: `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot })`,
-          compactLayout: true
-        });
-
-        /* eslint-disable-next-line no-console -- The output of "npm install" should be displaying as is. */
-        console.log(stdout);
-
-      }
-    );
+    await this.publish({ distributionTag, npmToken });
 
   }
 
-  public async savePackageJSON_File(): Promise<void> {
-    return this.metadataFile.save();
+
+  /* ┅┅┅ Public ┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅ */
+  private async refreshNPM_Cache(): Promise<void> {
+    return new Promise<void>(
+      (resolve: () => void, reject: (error: ChildProcess.ExecException) => void): void => {
+        ChildProcess.exec(
+          "npm cache verify",
+          {
+            cwd: this.rootDirectoryAbsolutePath,
+            encoding: "utf-8"
+          },
+          (error: ChildProcess.ExecException | null): void => {
+
+            if (isNotNull(error)) {
+
+              Logger.logErrorLikeMessage({
+                title: "The error has occurred during the refreshing of npm cache",
+                description:
+                    `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).\n` +
+                    error.message,
+                compactLayout: true
+              });
+
+              reject(error);
+              return;
+
+            }
+
+
+            resolve();
+
+          }
+        );
+      }
+    );
   }
 
 }

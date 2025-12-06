@@ -53,7 +53,7 @@ On [@yamato-daiwa/es-extensions](https://www.npmjs.com/package/@yamato-daiwa/es-
 ```
 
 
-### Local development mode & production mode
+### Local Development Mode & Production Mode
 
 In local mode, the internal dependencies are linked via symlinks.
 Herewith, the "peerDependencies" will still refer to published outdated versions because during
@@ -75,13 +75,15 @@ Herewith, the "peerDependencies" will still refer to published outdated versions
 Once executed, you will be asked about the new version.
 It must be the valid version (satisfies to [`semver.valid()`](https://www.npmjs.com/package/semver)).
 
-When the valid version will be inputted,
+Once the valid version will be inputted,
 
 1. The field `version` will be filled by the inputted version in **package.json** files of all projects,
    managed by **YDMH**.
 2. In `dependencies` and `devDependencies` fields, the values of all internal packages managed by
   **YDMH** will be replaced with the relative paths.
 3. The `npm install` command will be executed in all packages of monorepo managed by **YDMH**.
+
+Additionally, the `npm audit fix` will be executed to automatically resolve the vulnerabilities which possible.
 
 
 ### `ydmn publish`
@@ -92,3 +94,16 @@ When the valid version will be inputted,
 2. Sequentially realizes all packages managed by **YDMH**, herewith once the specific package will be
    realized, in **package.json** files of dependents the symlinks will be replaced with normally installed 
    published package.
+
+Since the [classic token has been revoked](https://github.blog/changelog/2025-11-05-npm-security-update-classic-token-creation-disabled-and-granular-token-changes/),
+  it is required to execute the additional setup to use this command.
+
+1. In your npm account, open the "Access Tokens" page
+2. Create the new token ([documentation](https://docs.npmjs.com/creating-and-viewing-access-tokens)). Make sure that:
+  1. The token is actual for all packages of your repository
+  2. **Bypass 2FA** option is enabled
+3. Create the **.env** file in the root of your repository with `NPM_TOKEN` variable.  
+   The value of this variable will be the token which you have just created.
+4. Add the **.npmrc** file to each project of your monorepo with `//registry.npmjs.org/:_authToken=${NPM_TOKEN}` content. 
+
+Because the tokens have the validity date, they must be updated periodically.
