@@ -1,6 +1,6 @@
 {
   "name": "@yamato-daiwa/monorepo-helper",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "The utility for working with monorepos. The alternative approach to npm/pnpm/yarn workspaces and Lerna.",
   "keywords": [
     "monorepo",
@@ -27,18 +27,18 @@
     "node": ">=22.0"
   },
   "dependencies": {
-    "@npmcli/package-json": "7.0.1",
-    "@yamato-daiwa/es-extensions": "1.8.1",
-    "@yamato-daiwa/es-extensions-nodejs": "1.8.1",
-    "semver": "7.7.2"
+    "@npmcli/package-json": "7.0.4",
+    "@yamato-daiwa/es-extensions": "1.8.4",
+    "@yamato-daiwa/es-extensions-nodejs": "1.8.4",
+    "semver": "7.7.3"
   },
   "devDependencies": {
     "@types/node": "22.7.4",
     "@types/npmcli__package-json": "4.0.4",
     "@types/semver": "7.7.1",
-    "@yamato-daiwa/style_guides": "0.9.0",
-    "rimraf": "6.0.1",
-    "typescript": "5.9.2"
+    "@yamato-daiwa/style_guides": "0.11.1",
+    "rimraf": "6.1.2",
+    "typescript": "5.9.3"
   },
   "scripts": {
     "build": "tsc"
