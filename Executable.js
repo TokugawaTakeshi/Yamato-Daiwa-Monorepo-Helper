@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-require("./Build/index.js").
+require("./Distributable/index.js").
     default.
     interpretAndExecuteConsoleCommand(process.argv);

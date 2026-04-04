@@ -1,6 +1,6 @@
 {
   "name": "@yamato-daiwa/monorepo-helper",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The utility for working with monorepos. The alternative approach to npm/pnpm/yarn workspaces and Lerna.",
   "keywords": [
     "monorepo",
