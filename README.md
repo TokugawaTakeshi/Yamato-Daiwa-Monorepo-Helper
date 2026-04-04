@@ -8,6 +8,14 @@ The alternative approach to **npm workspaces**, **pnpm**, **yarn workspaces** an
 + Respects `peerDependencies`
 + Can be used via npm scripts cross-platformly. All options will be asked via dialog mode. 
 
+> ⚠️ **Warning**
+> 
+> Using this package, be prepared to be cleared of npm cache and deleted of `node_modules` directory and 
+>   `package-lock.json` file (off course, they will be replaced with the fresh ones).
+> Such behavior is required to guarantee the installation of just published packages from the npm repository during the
+>   switching from a local dependency to the published one.
+> See [here](https://stackoverflow.com/q/44331005) and [here](https://stackoverflow.com/q/79791086/4818123) for details.
+
 
 ## Installation
 

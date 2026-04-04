@@ -517,6 +517,13 @@ class Package {
       compactLayout: true
     });
 
+    Logger.logInfo({
+      title: "Deleting of the outdated node_modules and package-lock.json ...",
+      description:
+          "Need to delete the node_modules directory and package-lock.json file to guarantee the installation of " +
+            "just published dependency from the npm repository instead of the local one."
+    });
+
 
     /* [ Theory: npm ]
      * If just to run the "npm install", previously symlinked dependencies will NOT be installed from the npm, thus
@@ -534,12 +541,7 @@ class Package {
       )
     ]);
 
-    Logger.logInfo({
-      title: "Refreshing of the npm cache ...",
-      description: "Need to refresh the npm cache to install just published dependency from the npm repository."
-    });
-
-    await this.refreshNPM_Cache();
+    await this.clearNPM_Cache();
 
     await this.installDependenciesWhichRequired();
 
@@ -561,11 +563,20 @@ class Package {
 
 
   /* ┅┅┅ Public ┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅ */
-  private async refreshNPM_Cache(): Promise<void> {
+  private async clearNPM_Cache(): Promise<void> {
+
+    Logger.logInfo({
+      title: "Clearing of the npm cache ...",
+      description:
+          "Need to clear the npm cache to guarantee the installation of just published dependency from the npm " +
+            "repository instead of the local one."
+    });
+
+    /* [ Theory ] `npm cache verify` does not work.  */
     return new Promise<void>(
       (resolve: () => void, reject: (error: ChildProcess.ExecException) => void): void => {
         ChildProcess.exec(
-          "npm cache verify",
+          "npm cache clean --force",
           {
             cwd: this.rootDirectoryAbsolutePath,
             encoding: "utf-8"
@@ -575,7 +586,7 @@ class Package {
             if (isNotNull(error)) {
 
               Logger.logErrorLikeMessage({
-                title: "The error has occurred during the refreshing of npm cache",
+                title: "The error has occurred during the cleaning of the npm cache",
                 description:
                     `at "${ this.name }" (${ this.rootDirectoryPathRelativeToMonorepoRoot }).\n` +
                     error.message,

@@ -3,20 +3,18 @@
   "compilerOptions": {
 
     "target": "ESNext",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "types": [ "node" ],
+    "skipLibCheck": true,
+    "removeComments": true,
 
-    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "skipLibCheck": true,
 
-    "removeComments": true,
-
-    "outDir": "Build/"
+    "rootDir": "Source",
+    "outDir": "Distributable",
 
   },
 
