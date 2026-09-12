@@ -5,15 +5,19 @@ import {
   isUndefined,
   isNotUndefined,
   isNotNull,
+  Timer,
   Logger,
   InvalidExternalDataError
 } from "@yamato-daiwa/es-extensions";
-import { ImprovedPath } from "@yamato-daiwa/es-extensions-nodejs";
+import { ImprovedPath, NodeJS_Timer } from "@yamato-daiwa/es-extensions-nodejs";
 import * as FilesAndDirectoriesDeleter from "rimraf";
 import Path from "path";
 
 
 class Package {
+
+  private static readonly PACKAGE_DEPENDENCIES_INSTALLATION_ATTEMPTS_LIMIT: number = 3;
+  private static readonly PACKAGE_DEPENDENCIES_REINSTALLATION_ATTEMPT_WAITING__SECONDS: number = 10;
 
   public readonly rootDirectoryAbsolutePath: string;
   public readonly rootDirectoryPathRelativeToMonorepoRoot: string;
@@ -541,9 +545,50 @@ class Package {
       )
     ]);
 
-    await this.clearNPM_Cache();
 
-    await this.installDependenciesWhichRequired();
+    let dependenciesInstallationAttemptsCount: number = 1;
+
+    do {
+
+      try {
+
+        /* eslint-disable no-await-in-loop --
+         * Normally there must be only one iteration of sequential asynchronous actions.
+         * The parallel is algorithmically unacceptable here. * */
+        await this.clearNPM_Cache();
+
+        await this.installDependenciesWhichRequired();
+
+        break;
+
+      } catch (error: unknown) {
+
+        if (error instanceof Error && error.message.includes("ETARGET")) {
+
+          dependenciesInstallationAttemptsCount++;
+
+          Logger.logInfo({
+            title: "Need another dependencies installation attempt",
+            description:
+                "One or more dependencies not found, but it may be because the newest data is not available yet in npm. " +
+                `Retrying after ${ Package.PACKAGE_DEPENDENCIES_REINSTALLATION_ATTEMPT_WAITING__SECONDS } seconds...`
+          });
+
+          await new NodeJS_Timer({ period__seconds: 5 }).
+              countDown({ asynchronousCompletion: Timer.AsynchronousCompletions.promise });
+
+          /* eslint-enable no-await-in-loop */
+
+          continue;
+
+        }
+
+
+        throw error;
+
+      }
+
+    } while (dependenciesInstallationAttemptsCount !== Package.PACKAGE_DEPENDENCIES_INSTALLATION_ATTEMPTS_LIMIT);
 
     await this.auditAndFixVulnerabilitiesWhichPossible();
 

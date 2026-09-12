@@ -1,6 +1,6 @@
 {
   "name": "@yamato-daiwa/monorepo-helper",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The utility for working with monorepos. The alternative approach to npm/pnpm/yarn workspaces and Lerna.",
   "keywords": [
     "monorepo",
@@ -14,7 +14,7 @@
   "repository": "https://github.com/TokugawaTakeshi/Yamato-Daiwa-Monorepo-Helper.git",
   "bugs": "https://github.com/TokugawaTakeshi/Yamato-Daiwa-Monorepo-Helper/issues",
   "license": "MIT",
-  "main": "Build/index.js",
+  "main": "Distributable/index.js",
   "sideEffects": false,
   "files": [
     "Distributable",
