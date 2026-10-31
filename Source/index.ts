@@ -1,8 +1,9 @@
 import Package from "./Package";
 
 import Path from "path";
-/* eslint-disable-next-line n/no-unsupported-features/node-builtins -- Has stability 2 "Stable" in Node 22. */
+import ChildProcess from "node:child_process";
 import LineReader from "node:readline/promises";
+
 import SemanticVersioner from "semver";
 import {
   Logger,
@@ -23,6 +24,13 @@ import {
 class ConsoleLineInterface {
 
   /* ━━━ Fields ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  private static readonly npmCheckUpdatesScriptAbsolutePath: string =
+      Path.join(
+        __dirname,
+        "..",
+        "node_modules/npm-check-updates/build/cli.js"
+      );
+
   private readonly targetMonorepoRootDirectoryAbsolutePath: string;
   private readonly internalPackages: ReadonlyArray<Package>;
   private readonly namesOfBuiltPackagesWithDependents: Set<string> = new Set();
@@ -58,6 +66,12 @@ class ConsoleLineInterface {
 
             case "publish": {
               selfDataHoldingInstance.switchMonorepoToProductionModeAndPublish().catch(Logger.logPromiseError);
+              break;
+            }
+
+            case "update": {
+              selfDataHoldingInstance.checkUpdatesAndInstallSelectedOnes().catch(Logger.logPromiseError);
+              break;
             }
 
           }
@@ -310,6 +324,25 @@ class ConsoleLineInterface {
 
   }
 
+  private async checkUpdatesAndInstallSelectedOnes(): Promise<void> {
+
+    for (const internalPackage of this.internalPackages) {
+
+      /* eslint-disable-next-line no-await-in-loop -- A user can work with single session. */
+      await ConsoleLineInterface.checkUpdatesInPackage(internalPackage);
+
+    }
+
+    await Promise.all(
+      this.internalPackages.map(
+        async (internalPackage: Package): Promise<void> => {
+          await internalPackage.installDependenciesWhichRequired();
+          await internalPackage.auditAndFixVulnerabilitiesWhichPossible();
+        }
+      )
+    );
+
+  }
 
   /* ━━━ Auxiliaries ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   private static async searchAndAnalyzeInternalPackages(
@@ -372,6 +405,48 @@ class ConsoleLineInterface {
 
   }
 
+  private static async checkUpdatesInPackage(internalPackage: Package): Promise<void> {
+    return new Promise<void>(
+      (resolve: () => void): void => {
+
+        const childProcess: ChildProcess.ChildProcess =
+            ChildProcess.spawn(
+              "node",
+              [
+                ConsoleLineInterface.npmCheckUpdatesScriptAbsolutePath,
+                "--interactive"
+              ],
+              {
+                stdio: "inherit",
+                cwd: internalPackage.rootDirectoryAbsolutePath
+              }
+            );
+
+        // childProcess.on("message", (data: ChildProcess.Serializable) => {
+        //   console.log("MESSAGE");
+        //   console.log(`message: ${ data.toString() }`);
+        // });
+        //
+        // childProcess.stdout?.on("data", (data: unknown) => {
+        //   console.log("STDOUT");
+        //   console.log(`stdout: ${ data }`);
+        // });
+        //
+        // childProcess.stderr?.on("data", (data: unknown) => {
+        //   console.log("STDERR");
+        //   console.error(`stderr: ${ data }`);
+        // });
+
+        childProcess.on(
+          "close",
+          resolve
+        );
+
+      }
+    );
+
+  }
+
 }
 
 
@@ -400,3 +475,4 @@ namespace ConsoleLineInterface {
 
 
 export default ConsoleLineInterface;
+
