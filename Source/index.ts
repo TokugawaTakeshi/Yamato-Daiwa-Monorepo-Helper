@@ -1,42 +1,232 @@
 import Package from "./Package";
+import type Configuration from "./Configuration";
 
-import Path from "path";
-import ChildProcess from "node:child_process";
-import LineReader from "node:readline/promises";
+import DependenciesInstaller from "./Executors/DependenciesInstaller";
+import VersionSetter from "./Executors/VersionSetter";
+import Publisher from "./Executors/Publisher";
+import DependenciesUpdater from "./Executors/DependenciesUpdater";
+import TasksExecutor from "./Executors/TasksExecutor";
 
-import SemanticVersioner from "semver";
 import {
+  isUndefined,
   Logger,
-  InvalidExternalDataError,
   RawObjectDataProcessor,
-  removeArrayElementsByIndexes,
-  isNull,
-  isNonEmptyString,
-  emptyStringToUndefined
+  removeArrayElementsByIndexes
 } from "@yamato-daiwa/es-extensions";
 import {
   ConsoleApplicationLogger,
-  FileNotFoundError,
-  ObjectDataFilesProcessor
+  ObjectDataFilesProcessor,
+  ImprovedPath, FileNotFoundError
 } from "@yamato-daiwa/es-extensions-nodejs";
 
 
-class ConsoleLineInterface {
+abstract class ConsoleLineInterface {
 
-  /* ━━━ Fields ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-  private static readonly npmCheckUpdatesScriptAbsolutePath: string =
-      Path.join(
-        __dirname,
-        "..",
-        "node_modules/npm-check-updates/build/cli.js"
-      );
+   private static readonly subtaskSpecification: RawObjectDataProcessor.FixedSchemaObjectValueSpecification =
 
-  private readonly targetMonorepoRootDirectoryAbsolutePath: string;
-  private readonly internalPackages: ReadonlyArray<Package>;
-  private readonly namesOfBuiltPackagesWithDependents: Set<string> = new Set();
+      {
+
+        type: Object,
+        properties: {
+
+          $directory: {
+            newName: "directory",
+            type: String,
+            isUndefinedForbidden: false,
+            isNullForbidden: true,
+            minimalCharactersCount: 1
+          },
+
+          $npmScript: {
+            newName: "npmScript",
+            type: String,
+            isUndefinedForbidden: false,
+            isNullForbidden: true,
+            minimalCharactersCount: 1
+          },
+
+          $command: {
+            newName: "command",
+            type: String,
+            isUndefinedForbidden: false,
+            isNullForbidden: true,
+            minimalCharactersCount: 1
+          },
+
+          $YDNSR_Script: {
+            newName: "YDNSR_Script",
+            type: String,
+            isUndefinedForbidden: false,
+            isNullForbidden: true,
+            minimalCharactersCount: 1
+          },
+
+          $templateVariables: {
+            newName: "templateVariables",
+            type: Object,
+            properties: {},
+            undefinedValueSubstitution: {},
+            nullValueSubstitution: {}
+          },
+
+          $environmentVariables: {
+            newName: "environmentVariables",
+            type: RawObjectDataProcessor.ValuesTypesIDs.associativeArray,
+            undefinedValueSubstitution: {},
+            nullValueSubstitution: {},
+            areUndefinedTypeValuesForbidden: true,
+            areNullTypeValuesForbidden: true,
+            value: {
+              type: RawObjectDataProcessor.ValuesTypesIDs.polymorphic,
+              alternatives: [
+                {
+                  type: String,
+                  minimalCharactersCount: 1
+                },
+                {
+                  type: Number,
+                  numbersSet: RawObjectDataProcessor.NumbersSets.anyRealNumber,
+                  isNaN_Forbidden: true
+                },
+                { type: Boolean }
+              ]
+            }
+          },
+
+          $mustProceedEvenIfFail: {
+            newName: "mustProceedEvenIfFail",
+            type: Boolean,
+            undefinedValueSubstitution: false,
+            isNullForbidden: true
+          },
+
+          $mustFinishExecutionIfSucceeded: {
+            newName: "mustFinishExecutionIfSucceeded",
+            type: Boolean,
+            undefinedValueSubstitution: false,
+            isNullForbidden: true
+          }
+
+        }
+
+      };
+
+  private static readonly configurationSpecification: RawObjectDataProcessor.PropertiesSpecification =
+      {
+
+        $packages: {
+
+          newName: "packages",
+          type: Array,
+          isUndefinedForbidden: true,
+          isNullForbidden: true,
+          areUndefinedElementsForbidden: true,
+          areNullElementsForbidden: true,
+
+          element: {
+
+            type: Object,
+
+            properties: {
+
+              $relativePath: {
+                newName: "relativePath",
+                type: String,
+                minimalCharactersCount: 1,
+                isUndefinedForbidden: false,
+                isNullForbidden: false
+              },
+
+              $productionBuildingScript: {
+                newName: "productionBuildingScript",
+                type: String,
+                minimalCharactersCount: 1,
+                isUndefinedForbidden: false,
+                isNullForbidden: false
+              }
+
+            }
+
+          }
+
+        },
+
+        $tasks: {
+
+          newName: "tasks",
+          type: RawObjectDataProcessor.ValuesTypesIDs.associativeArray,
+          undefinedValueSubstitution: {},
+          nullValueSubstitution: {},
+          areUndefinedTypeValuesForbidden: true,
+          areNullTypeValuesForbidden: true,
+
+          value: {
+
+            type: Object,
+            possibleSchemas: {
+
+              conditionals: {
+
+                parallel: {
+
+                  actualIf:
+                      (
+                        { rawData__currentObjectDepth }:
+                            RawObjectDataProcessor.ConditionAssociatedWithProperty.Predicate.Parameter
+                      ): boolean =>
+                          "$parallel" in rawData__currentObjectDepth,
+
+                  properties: {
+
+                    $parallel: {
+
+                      newName: "parallel",
+                      type: Array,
+                      isUndefinedForbidden: true,
+                      isNullForbidden: true,
+                      areUndefinedElementsForbidden: false,
+                      areNullElementsForbidden: false,
+
+                      element: ConsoleLineInterface.subtaskSpecification
+
+                    }
+
+                  }
+
+                }
+
+              },
+
+              default: {
+
+                $series: {
+
+                  newName: "series",
+                  type: Array,
+                  isUndefinedForbidden: true,
+                  isNullForbidden: true,
+                  areUndefinedElementsForbidden: false,
+                  areNullElementsForbidden: false,
+
+                  element: ConsoleLineInterface.subtaskSpecification
+
+                }
+
+              }
+
+            }
+
+          }
+
+        }
+
+      };
+
+  private static readonly targetMonorepoRootDirectoryAbsolutePath: string = process.cwd();
+  private static readonly configuration: Configuration =
+      ConsoleLineInterface.getConfiguration();
 
 
-  /* ━━━ Initialization ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   static {
     Logger.setImplementation(ConsoleApplicationLogger);
   }
@@ -44,66 +234,105 @@ class ConsoleLineInterface {
 
   public static interpretAndExecuteConsoleCommand(argumentsVector: ReadonlyArray<string>): void {
 
-    const targetMonorepoRootDirectoryAbsolutePath: string = process.cwd();
-
     ConsoleLineInterface.
 
-        searchAndAnalyzeInternalPackages(targetMonorepoRootDirectoryAbsolutePath).
+        searchAndAnalyzeInternalPackages().
 
-        then((internalPackages: ReadonlyArray<Package>): void => {
+        then(
+          async (internalPackages: ReadonlyArray<Package>): Promise<void> => {
 
-          const selfDataHoldingInstance: ConsoleLineInterface = new ConsoleLineInterface({
-            targetMonorepoRootDirectoryAbsolutePath,
-            internalPackages
-          });
+            switch (argumentsVector[2]) {
 
-          switch (argumentsVector[2]) {
+              case "install": {
+                await DependenciesInstaller.installInPackages(internalPackages);
+                break;
+              }
 
-            case "version": {
-              selfDataHoldingInstance.setVersionAndSwitchMonorepoToLocalDevelopmentMode().catch(Logger.logPromiseError);
-              break;
-            }
+              case "version": {
+                await VersionSetter.setVersionAndSwitchMonorepoToLocalDevelopmentMode(internalPackages);
+                break;
+              }
 
-            case "publish": {
-              selfDataHoldingInstance.switchMonorepoToProductionModeAndPublish().catch(Logger.logPromiseError);
-              break;
-            }
+              case "publish": {
 
-            case "update": {
-              selfDataHoldingInstance.checkUpdatesAndInstallSelectedOnes().catch(Logger.logPromiseError);
-              break;
+                await Publisher.switchMonorepoToProductionModeAndPublish({
+                  packages: internalPackages,
+                  targetMonorepoRootDirectoryAbsolutePath: ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath
+                });
+
+                break;
+
+              }
+
+              case "update": {
+                await DependenciesUpdater.checkUpdatesAndInstallSelectedOnes(internalPackages);
+                break;
+              }
+
+              case "run": {
+
+                const targetTaskName: string = argumentsVector[3];
+                const targetTask: Configuration.SubtasksSet | undefined =
+                    ConsoleLineInterface.configuration.tasks[targetTaskName];
+
+                if (isUndefined(targetTask)) {
+                  Logger.throwErrorWithFormattedMessage({
+                    errorType: "UnknownTaskError",
+                    title: "Unknown Task",
+                    description:
+                        `The task "${ targetTaskName }" is not defined in YDMH configuration file. ` +
+                        "The defined tasks are:\n" +
+                        Object.
+                            keys(ConsoleLineInterface.configuration.tasks).
+                            map((taskName: string): string => `  ● ${ taskName }`).
+                            join("\n"),
+
+                    occurrenceLocation: "ConsoleLineInterface.interpretAndExecuteConsoleCommand(argumentsVector)"
+                  });
+                }
+
+                await TasksExecutor.execute({
+                  targetTask,
+                  targetMonorepoRootDirectoryAbsolutePath: ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath
+                });
+
+              }
+
             }
 
           }
-
-        }).
+        ).
 
         catch(Logger.logPromiseError);
 
   }
 
 
-  private constructor(
-    {
-      targetMonorepoRootDirectoryAbsolutePath,
-      internalPackages
-    }: Readonly<{
-      targetMonorepoRootDirectoryAbsolutePath: string;
-      internalPackages: ReadonlyArray<Package>;
-    }>
-  ) {
+  /* ━━━ Auxiliaries ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  private static async searchAndAnalyzeInternalPackages(): Promise<ReadonlyArray<Package>> {
 
-    this.targetMonorepoRootDirectoryAbsolutePath = targetMonorepoRootDirectoryAbsolutePath;
-    this.internalPackages = internalPackages;
+    const internalPackages: ReadonlyArray<Package> =
 
-    for (const [ internalPackageIndex, internalPackage ] of this.internalPackages.entries()) {
+        await Promise.all(
+          ConsoleLineInterface.configuration.packages.map(
+            async (packageMetadata: Configuration.Package): Promise<Package> =>
+                Package.capture({
+                  packageRootDirectoryPathRelativeToMonorepoRoot: packageMetadata.relativePath,
+                  monorepoRootDirectoryRelativePath: ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath,
+                  productionBuildingScript: packageMetadata.productionBuildingScript
+                })
+          )
+        );
+
+    for (const [ internalPackageIndex, internalPackage ] of internalPackages.entries()) {
 
       for (
-        const anotherInternalProject of removeArrayElementsByIndexes({
-          targetArray: this.internalPackages,
-          indexes: [ internalPackageIndex ],
-          mutably: false
-        }).updatedArray
+        const anotherInternalProject of
+            removeArrayElementsByIndexes({
+              targetArray: internalPackages,
+              indexes: [ internalPackageIndex ],
+              mutably: false
+            }).updatedArray
       ) {
 
         if (internalPackage.hasDependencyOfAnyTypeWithName(anotherInternalProject.name)) {
@@ -114,244 +343,51 @@ class ConsoleLineInterface {
 
     }
 
-  }
-
-
-  /* ━━━ Commands ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-  private async setVersionAndSwitchMonorepoToLocalDevelopmentMode(): Promise<void> {
-
-    const lineReader: LineReader.Interface = LineReader.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    let inputtedVersion: string | null;
-
-    do {
-
-      /* eslint-disable-next-line no-await-in-loop -- No parallel promises algorithmically possible here. */
-      inputtedVersion = SemanticVersioner.valid(await lineReader.question("Set new version: "));
-
-      if (isNull(inputtedVersion)) {
-
-        Logger.logErrorLikeMessage({
-          title: InvalidExternalDataError.localization.defaultTitle,
-          description: "Invalid version has been inputted. Please input the valid version."
-        });
-
-      }
-
-    } while (isNull(inputtedVersion));
-
-    lineReader.close();
-
-
-    for (const internalPackage of this.internalPackages) {
-
-      /* eslint-disable-next-line no-await-in-loop --
-      * If no `node_modules` currently installed even in one package, the installation may take some time.
-      * And, the parallel installation of all or majority of node_modules may cause the freezing. */
-      await internalPackage.
-          setVersion(inputtedVersion).
-          symlinkifyDependencies().
-          savePackageJSON_File();
-
-    }
-
-    await Promise.all(
-      this.internalPackages.map(
-        async (internalPackage: Package): Promise<void> => {
-          await internalPackage.installDependenciesWhichRequired();
-          await internalPackage.auditAndFixVulnerabilitiesWhichPossible();
-        }
-      )
-    );
+    return internalPackages;
 
   }
 
-  private async switchMonorepoToProductionModeAndPublish(): Promise<void> {
+  private static getConfiguration(): Configuration {
 
-    let npmToken: string;
-
-    /* eslint-disable n/no-process-env --
-     * Actual for environments like remote repositories where the variables are being injected without the ".env" file. */
-    if (isNonEmptyString(process.env.NPM_TOKEN)) {
-
-      npmToken = process.env.NPM_TOKEN;
-      /* eslint-enable n/no-process-env */
-
-    } else {
-
-      const dotEnvFileAbsolutePath: string = Path.join(this.targetMonorepoRootDirectoryAbsolutePath, ".env");
+    for (
+      const configurationPotentialFileAbsolutePath of
+          [
+            ImprovedPath.joinPathSegments([ ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath, "ydmh.yaml" ]),
+            ImprovedPath.joinPathSegments([ ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath, "ydmh.yml" ])
+          ]
+    ) {
 
       try {
 
-        npmToken =
-
-            ObjectDataFilesProcessor.processFile<ConsoleLineInterface.RequiredEnvironmentVariables>({
-              filePath: dotEnvFileAbsolutePath,
-              validDataSpecification: {
-                subtype: RawObjectDataProcessor.ObjectSubtypes.fixedSchema,
-                nameForLogging: "Root .env file",
-                properties: {
-                  NPM_TOKEN: {
-                    type: String,
-                    minimalCharactersCount: 1,
-                    isUndefinedForbidden: false,
-                    isNullForbidden: false
-                  }
-                }
-              },
-              synchronously: true
-            }).
-
-            NPM_TOKEN;
+        return ObjectDataFilesProcessor.processFile<Configuration>({
+          filePath: configurationPotentialFileAbsolutePath,
+          validDataSpecification: {
+            subtype: RawObjectDataProcessor.ObjectSubtypes.fixedSchema,
+            nameForLogging: "YDMH Configuration File",
+            properties: ConsoleLineInterface.configurationSpecification
+          },
+          synchronously: true
+        });
 
       } catch (error: unknown) {
 
         if (error instanceof FileNotFoundError) {
-
-          Logger.logError({
-            errorType: FileNotFoundError.NAME,
-            title: FileNotFoundError.localization.defaultTitle,
-            description:
-                `${ FileNotFoundError.localization.generateDescriptionCommonPart({ filePath: dotEnvFileAbsolutePath }) }\n` +
-                "If \"NPM_TOKEN\" environment variable has not been injected, it must be defined in \".env\" file " +
-                  "in monorepo root repository.",
-            occurrenceLocation: "consoleLineInterface.switchMonorepoToProductionModeAndPublish()",
-            caughtError: error
-          });
-
-          return;
-
-        }
-
-
-        Logger.logError({
-          errorType: "NPM_TokenNotAvailableError",
-          title: "NPM Token not Available",
-          description:
-              "Failed to retrieve the \"NPM_TOKEN\" environment variable from both `process.env.NPM_TOKEN` and " +
-                "\".env\" file in the monorepo root directory.",
-          occurrenceLocation: "consoleLineInterface.switchMonorepoToProductionModeAndPublish()",
-          caughtError: error
-        });
-
-        return;
-
-      }
-
-    }
-
-    const lineReader: LineReader.Interface = LineReader.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    const distributionTag: string | undefined =
-        emptyStringToUndefined(
-          (await lineReader.question("Please specify the tag (just press Enter if latest): ")).
-              trim()
-        );
-
-    lineReader.close();
-
-    const packagesWithoutInternalDependencies: ReadonlyArray<Package> = this.internalPackages.filter(
-      (internalPackage: Package): boolean => internalPackage.internalDependencies.size === 0
-    );
-
-    await Promise.all(
-      packagesWithoutInternalDependencies.map(
-        async (packageWithoutInternalDependencies: Package): Promise<void> =>
-            packageWithoutInternalDependencies.executeProductionBuilding()
-      )
-    );
-
-    for (const packageWithoutInternalDependencies of packagesWithoutInternalDependencies) {
-
-      /* eslint-disable-next-line no-await-in-loop -- May freeze for a large number of projects if run to parallel. */
-      await this.executeProductionBuildingForDependentsOf(packageWithoutInternalDependencies);
-
-    }
-
-    await Promise.all(
-      packagesWithoutInternalDependencies.map(
-        async (packageWithoutInternalDependencies: Package): Promise<void> =>
-            packageWithoutInternalDependencies.publish({ distributionTag, npmToken })
-      )
-    );
-
-    const namesOfPublishedPackagesWithDependents: Set<string> = new Set();
-
-    for (const packageWithoutInternalDependencies of packagesWithoutInternalDependencies) {
-
-      for (const [ dependentPackageName, dependentPackage ] of packageWithoutInternalDependencies.directInternalDependents) {
-
-        if (namesOfPublishedPackagesWithDependents.has(dependentPackageName)) {
           continue;
         }
 
 
-        /* eslint-disable-next-line no-await-in-loop -- May freeze for a large number of projects if run to parallel. */
-        await dependentPackage.replaceSymlinkifiedDependenciesWithPublishedOnes({ distributionTag, npmToken });
-
-        namesOfPublishedPackagesWithDependents.add(dependentPackageName);
+        throw error;
 
       }
 
     }
 
-  }
 
-  private async executeProductionBuildingForDependentsOf(packageWithoutInternalDependencies: Package): Promise<void> {
+    const { ydmh: configuration }: ConsoleLineInterface.ValidConfigurationFromRootPackageJSON | undefined =
 
-    for (const [ dependentPackageName, dependentPackage ] of packageWithoutInternalDependencies.directInternalDependents) {
-
-      if (this.namesOfBuiltPackagesWithDependents.has(dependentPackageName)) {
-        continue;
-      }
-
-
-      /* eslint-disable-next-line no-await-in-loop -- May freeze for a large number of projects if run to parallel. */
-      await dependentPackage.executeProductionBuilding();
-
-      this.namesOfBuiltPackagesWithDependents.add(dependentPackageName);
-
-      /* eslint-disable-next-line no-await-in-loop -- May freeze for a large number of projects if run to parallel. */
-      await this.executeProductionBuildingForDependentsOf(dependentPackage);
-
-    }
-
-  }
-
-  private async checkUpdatesAndInstallSelectedOnes(): Promise<void> {
-
-    for (const internalPackage of this.internalPackages) {
-
-      /* eslint-disable-next-line no-await-in-loop -- A user can work with single session. */
-      await ConsoleLineInterface.checkUpdatesInPackage(internalPackage);
-
-    }
-
-    await Promise.all(
-      this.internalPackages.map(
-        async (internalPackage: Package): Promise<void> => {
-          await internalPackage.installDependenciesWhichRequired();
-          await internalPackage.auditAndFixVulnerabilitiesWhichPossible();
-        }
-      )
-    );
-
-  }
-
-  /* ━━━ Auxiliaries ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-  private static async searchAndAnalyzeInternalPackages(
-    targetMonorepoRootDirectoryAbsolutePath: string
-  ): Promise<ReadonlyArray<Package>> {
-
-    const configuration: ConsoleLineInterface.ValidConfigurationFromRootPackageJSON =
         ObjectDataFilesProcessor.processFile<ConsoleLineInterface.ValidConfigurationFromRootPackageJSON>({
-          filePath: Path.join(targetMonorepoRootDirectoryAbsolutePath, "package.json"),
+          filePath:
+              ImprovedPath.joinPathSegments([ ConsoleLineInterface.targetMonorepoRootDirectoryAbsolutePath, "package.json" ]),
           validDataSpecification: {
             subtype: RawObjectDataProcessor.ObjectSubtypes.fixedSchema,
             nameForLogging: "Root package.json",
@@ -360,90 +396,14 @@ class ConsoleLineInterface {
                 type: Object,
                 isUndefinedForbidden: true,
                 isNullForbidden: true,
-                properties: {
-                  packages: {
-                    type: Array,
-                    isUndefinedForbidden: true,
-                    isNullForbidden: true,
-                    areUndefinedElementsForbidden: true,
-                    areNullElementsForbidden: true,
-                    element: {
-                      type: Object,
-                      properties: {
-                        relativePath: {
-                          type: String,
-                          minimalCharactersCount: 1,
-                          isUndefinedForbidden: false,
-                          isNullForbidden: false
-                        },
-                        productionBuildingScript: {
-                          type: String,
-                          minimalCharactersCount: 1,
-                          isUndefinedForbidden: false,
-                          isNullForbidden: false
-                        }
-                      }
-                    }
-                  }
-                }
+                properties: ConsoleLineInterface.configurationSpecification
               }
             }
           },
           synchronously: true
         });
 
-    return Promise.all(
-      configuration.ydmh.packages.map(
-        async (packageMetadata: ConsoleLineInterface.ValidConfigurationFromRootPackageJSON.Package): Promise<Package> =>
-            Package.capture({
-              packageRootDirectoryPathRelativeToMonorepoRoot: packageMetadata.relativePath,
-              monorepoRootDirectoryRelativePath: targetMonorepoRootDirectoryAbsolutePath,
-              productionBuildingScript: packageMetadata.productionBuildingScript
-            })
-      )
-    );
-
-  }
-
-  private static async checkUpdatesInPackage(internalPackage: Package): Promise<void> {
-    return new Promise<void>(
-      (resolve: () => void): void => {
-
-        const childProcess: ChildProcess.ChildProcess =
-            ChildProcess.spawn(
-              "node",
-              [
-                ConsoleLineInterface.npmCheckUpdatesScriptAbsolutePath,
-                "--interactive"
-              ],
-              {
-                stdio: "inherit",
-                cwd: internalPackage.rootDirectoryAbsolutePath
-              }
-            );
-
-        // childProcess.on("message", (data: ChildProcess.Serializable) => {
-        //   console.log("MESSAGE");
-        //   console.log(`message: ${ data.toString() }`);
-        // });
-        //
-        // childProcess.stdout?.on("data", (data: unknown) => {
-        //   console.log("STDOUT");
-        //   console.log(`stdout: ${ data }`);
-        // });
-        //
-        // childProcess.stderr?.on("data", (data: unknown) => {
-        //   console.log("STDERR");
-        //   console.error(`stderr: ${ data }`);
-        // });
-
-        childProcess.on(
-          "close",
-          resolve
-        );
-
-      }
-    );
+    return configuration;
 
   }
 
@@ -452,27 +412,9 @@ class ConsoleLineInterface {
 
 namespace ConsoleLineInterface {
 
-  export type RequiredEnvironmentVariables = Readonly<{
-    NPM_TOKEN: string;
-  }>;
-
-  export type ValidConfigurationFromRootPackageJSON = Readonly<{
-    ydmh: Readonly<{
-      packages: ReadonlyArray<ValidConfigurationFromRootPackageJSON.Package>;
-    }>;
-  }>;
-
-  export namespace ValidConfigurationFromRootPackageJSON {
-
-    export type Package = Readonly<{
-      relativePath: string;
-      productionBuildingScript: string;
-    }>;
-
-  }
+  export type ValidConfigurationFromRootPackageJSON = Readonly<{ ydmh: Configuration; }>;
 
 }
 
 
 export default ConsoleLineInterface;
-
