@@ -1,5 +1,3 @@
-Configured authentication: JetBrains
-
 ## Why none of the three listeners fire
 
 The cause is `stdio: "inherit"` at `Source/index.ts:420`.
@@ -44,3 +42,28 @@ Add `env: { ...process.env, FORCE_COLOR: "1" }` to keep the colours. The interac
 **4. Use a pseudo-terminal (`node-pty`).** The child thinks it's in a real terminal, so the interactive UI works fully, and you still receive every byte through `pty.onData(...)`. The downsides are a native dependency (it needs prebuilt binaries on Windows) and raw output full of ANSI escape codes that you'd have to strip before parsing.
 
 What do you actually need from the output? If it's "which packages were upgraded", option 1 is the right choice. If you need to watch the live interactive session as it happens, use option 4. I haven't changed any code.
+
+
+# About output
+
+You don't need to intercept the output. ncu has a built-in option for this: `--install`, which accepts `always`, `never` or `prompt`. The default is `prompt`, and that's what shows the question.
+
+Pass `--install never` along with `--interactive`:
+
+```ts
+ChildProcess.spawn(
+  "node",
+  [
+    ConsoleLineInterface.npmCheckUpdatesScriptAbsolutePath,
+    "--interactive",
+    "--install", "never"
+  ],
+  { stdio: "inherit", cwd: internalPackage.rootDirectoryAbsolutePath }
+);
+```
+
+I checked this against the ncu build in your `node_modules` (`node_modules/npm-check-updates/build/index.js:19585`). The install step returns straight away when the option is `never`. So the user still gets the interactive checkbox list, the chosen versions are still written to `package.json`, and then ncu exits without asking anything or running `npm install`. You can keep `stdio: "inherit"`, so the interactive UI keeps working.
+
+If you'd rather have it install automatically without asking, `--install always` skips the question too, but it does run `npm install`.
+
+You can delete the commented-out `message`/`stdout`/`stderr` listeners, since nothing needs to be captured now.
