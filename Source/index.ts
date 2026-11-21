@@ -16,99 +16,266 @@ import {
 import {
   ConsoleApplicationLogger,
   ObjectDataFilesProcessor,
-  ImprovedPath, FileNotFoundError
+  ImprovedPath,
+  FileNotFoundError
 } from "@yamato-daiwa/es-extensions-nodejs";
 
 
 abstract class ConsoleLineInterface {
 
-   private static readonly subtaskSpecification: RawObjectDataProcessor.FixedSchemaObjectValueSpecification =
+   private static readonly subtaskPropertiesSpecification: RawObjectDataProcessor.PropertiesSpecification =
 
       {
 
-        type: Object,
-        properties: {
+        $directory: {
+          newName: "directory",
+          type: String,
+          isUndefinedForbidden: true,
+          isNullForbidden: true,
+          minimalCharactersCount: 1
+        },
 
-          $directory: {
-            newName: "directory",
-            type: String,
-            isUndefinedForbidden: false,
-            isNullForbidden: true,
-            minimalCharactersCount: 1
-          },
+        $npmScript: {
+          newName: "npmScript",
+          type: String,
+          isUndefinedForbidden: false,
+          isNullForbidden: true,
+          minimalCharactersCount: 1
+        },
 
-          $npmScript: {
-            newName: "npmScript",
-            type: String,
-            isUndefinedForbidden: false,
-            isNullForbidden: true,
-            minimalCharactersCount: 1
-          },
+        $command: {
+          newName: "command",
+          type: String,
+          isUndefinedForbidden: false,
+          isNullForbidden: true,
+          minimalCharactersCount: 1
+        },
 
-          $command: {
-            newName: "command",
-            type: String,
-            isUndefinedForbidden: false,
-            isNullForbidden: true,
-            minimalCharactersCount: 1
-          },
+        $YDNSR_Script: {
+          newName: "YDNSR_Script",
+          type: String,
+          isUndefinedForbidden: false,
+          isNullForbidden: true,
+          minimalCharactersCount: 1
+        },
 
-          $YDNSR_Script: {
-            newName: "YDNSR_Script",
-            type: String,
-            isUndefinedForbidden: false,
-            isNullForbidden: true,
-            minimalCharactersCount: 1
-          },
+        $templateVariables: {
+          newName: "templateVariables",
+          type: Object,
+          properties: {},
+          undefinedValueSubstitution: {},
+          nullValueSubstitution: {}
+        },
 
-          $templateVariables: {
-            newName: "templateVariables",
-            type: Object,
-            properties: {},
-            undefinedValueSubstitution: {},
-            nullValueSubstitution: {}
-          },
-
-          $environmentVariables: {
-            newName: "environmentVariables",
-            type: RawObjectDataProcessor.ValuesTypesIDs.associativeArray,
-            undefinedValueSubstitution: {},
-            nullValueSubstitution: {},
-            areUndefinedTypeValuesForbidden: true,
-            areNullTypeValuesForbidden: true,
-            value: {
-              type: RawObjectDataProcessor.ValuesTypesIDs.polymorphic,
-              alternatives: [
-                {
-                  type: String,
-                  minimalCharactersCount: 1
-                },
-                {
-                  type: Number,
-                  numbersSet: RawObjectDataProcessor.NumbersSets.anyRealNumber,
-                  isNaN_Forbidden: true
-                },
-                { type: Boolean }
-              ]
-            }
-          },
-
-          $mustProceedEvenIfFail: {
-            newName: "mustProceedEvenIfFail",
-            type: Boolean,
-            undefinedValueSubstitution: false,
-            isNullForbidden: true
-          },
-
-          $mustFinishExecutionIfSucceeded: {
-            newName: "mustFinishExecutionIfSucceeded",
-            type: Boolean,
-            undefinedValueSubstitution: false,
-            isNullForbidden: true
+        $environmentVariables: {
+          newName: "environmentVariables",
+          type: RawObjectDataProcessor.ValuesTypesIDs.associativeArray,
+          undefinedValueSubstitution: {},
+          nullValueSubstitution: {},
+          areUndefinedTypeValuesForbidden: true,
+          areNullTypeValuesForbidden: true,
+          value: {
+            type: RawObjectDataProcessor.ValuesTypesIDs.polymorphic,
+            alternatives: [
+              {
+                type: String,
+                minimalCharactersCount: 1
+              },
+              {
+                type: Number,
+                numbersSet: RawObjectDataProcessor.NumbersSets.anyRealNumber,
+                isNaN_Forbidden: true
+              },
+              { type: Boolean }
+            ]
           }
+        },
 
+        $mustProceedEvenIfFail: {
+          newName: "mustProceedEvenIfFail",
+          type: Boolean,
+          undefinedValueSubstitution: false,
+          isNullForbidden: true
+        },
+
+        $mustFinishExecutionIfSucceeded: {
+          newName: "mustFinishExecutionIfSucceeded",
+          type: Boolean,
+          undefinedValueSubstitution: false,
+          isNullForbidden: true
         }
 
+      };
+
+
+  private static readonly seriesItemPropertiesSpecification: RawObjectDataProcessor.FixedSchemaObjectValueSpecification =
+
+      {
+        type: Object,
+        possibleSchemas: {
+
+          conditionals: {
+
+            parallel: {
+
+              actualIf:
+                  (
+                    { rawData__currentObjectDepth }:
+                        RawObjectDataProcessor.ConditionAssociatedWithProperty.Predicate.Parameter
+                  ): boolean =>
+                      "$parallel" in rawData__currentObjectDepth,
+
+              properties: {
+
+                $parallel: {
+
+                  newName: "parallel",
+                  type: Array,
+                  isUndefinedForbidden: true,
+                  isNullForbidden: true,
+                  areUndefinedElementsForbidden: true,
+                  areNullElementsForbidden: true,
+
+                  element: {
+
+                    type: Object,
+                    possibleSchemas: {
+
+                      conditionals: {
+
+                        series: {
+
+                          actualIf:
+                            (
+                              { rawData__currentObjectDepth }:
+                                  RawObjectDataProcessor.ConditionAssociatedWithProperty.Predicate.Parameter
+                            ): boolean =>
+                                "$series" in rawData__currentObjectDepth,
+
+                          properties: {
+
+                            $series: {
+
+                              type: Array,
+                              isUndefinedForbidden: true,
+                              isNullForbidden: true,
+                              areUndefinedElementsForbidden: true,
+                              areNullElementsForbidden: true,
+
+                              get element(): RawObjectDataProcessor.FixedSchemaObjectValueSpecification {
+                                return ConsoleLineInterface.seriesItemPropertiesSpecification;
+                              }
+
+                            }
+
+                          }
+
+                        }
+
+                      },
+
+                      default: ConsoleLineInterface.subtaskPropertiesSpecification
+
+                    }
+
+                  }
+
+                }
+
+              }
+
+            }
+
+          },
+
+          default: ConsoleLineInterface.subtaskPropertiesSpecification
+
+        }
+      };
+
+  private static readonly parallelItemPropertiesSpecification: RawObjectDataProcessor.FixedSchemaObjectValueSpecification =
+
+      {
+        type: Object,
+        possibleSchemas: {
+
+          conditionals: {
+
+            series: {
+
+              actualIf:
+                  (
+                    { rawData__currentObjectDepth }:
+                        RawObjectDataProcessor.ConditionAssociatedWithProperty.Predicate.Parameter
+                  ): boolean =>
+                      "$series" in rawData__currentObjectDepth,
+
+              properties: {
+
+                $series: {
+
+                  newName: "series",
+                  type: Array,
+                  isUndefinedForbidden: true,
+                  isNullForbidden: true,
+                  areUndefinedElementsForbidden: true,
+                  areNullElementsForbidden: true,
+
+                  element: {
+
+                    type: Object,
+                    possibleSchemas: {
+
+                      conditionals: {
+
+                        parallel: {
+
+                          actualIf:
+                            (
+                              { rawData__currentObjectDepth }:
+                                  RawObjectDataProcessor.ConditionAssociatedWithProperty.Predicate.Parameter
+                            ): boolean =>
+                                "$parallel" in rawData__currentObjectDepth,
+
+                          properties: {
+
+                            $parallel: {
+
+                              type: Array,
+                              isUndefinedForbidden: true,
+                              isNullForbidden: true,
+                              areUndefinedElementsForbidden: true,
+                              areNullElementsForbidden: true,
+
+                              get element(): RawObjectDataProcessor.FixedSchemaObjectValueSpecification {
+                                return ConsoleLineInterface.parallelItemPropertiesSpecification;
+                              }
+
+                            }
+
+                          }
+
+                        }
+
+                      },
+
+                      default: ConsoleLineInterface.subtaskPropertiesSpecification
+
+                    }
+
+                  }
+
+                }
+
+              }
+
+            }
+
+          },
+
+          default: ConsoleLineInterface.subtaskPropertiesSpecification
+
+        }
       };
 
   private static readonly configurationSpecification: RawObjectDataProcessor.PropertiesSpecification =
@@ -187,7 +354,7 @@ abstract class ConsoleLineInterface {
                       areUndefinedElementsForbidden: false,
                       areNullElementsForbidden: false,
 
-                      element: ConsoleLineInterface.subtaskSpecification
+                      element: ConsoleLineInterface.parallelItemPropertiesSpecification
 
                     }
 
@@ -208,7 +375,7 @@ abstract class ConsoleLineInterface {
                   areUndefinedElementsForbidden: false,
                   areNullElementsForbidden: false,
 
-                  element: ConsoleLineInterface.subtaskSpecification
+                  element: ConsoleLineInterface.seriesItemPropertiesSpecification
 
                 }
 
@@ -271,7 +438,8 @@ abstract class ConsoleLineInterface {
 
               case "run": {
 
-                const targetTaskName: string = argumentsVector[3];
+                const TASK_NAME_ARGUMENTS_VECTOR_ELEMENT_EXPECTED_INDEX: number = 3;
+                const targetTaskName: string = argumentsVector[TASK_NAME_ARGUMENTS_VECTOR_ELEMENT_EXPECTED_INDEX];
                 const targetTask: Configuration.SubtasksSet | undefined =
                     ConsoleLineInterface.configuration.tasks[targetTaskName];
 

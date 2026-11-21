@@ -3,25 +3,39 @@
 The utility for working with monorepos.
 The alternative approach to **npm workspaces**, **pnpm**, **yarn workspaces** and **Lerna**.
 
-+ Using symlinks during local development
-+ No dependencies hoisting
-+ Respects `peerDependencies`
-+ Can be used via npm scripts cross-platformly. All options will be asked via dialog mode. 
-
-> ⚠️ **Warning**
-> 
-> Using this package, be prepared to be cleared of npm cache and deleted of `node_modules` directory and 
->   `package-lock.json` file (off course, they will be replaced with the fresh ones).
-> Such behavior is required to guarantee the installation of just published packages from the npm repository during the
->   switching from a local dependency to the published one.
-> See [here](https://stackoverflow.com/q/44331005) and [here](https://stackoverflow.com/q/79791086/4818123) for details.
-
 
 ## Installation
 
 ```
 npm i @yamato-daiwa/yamato-daiwa-monorepo-helper -D -E
 ```
+
+## CLI
+### `ydmh install`
+
+Installs the dependencies without modifying (from the YDMH side) of files.
+De facto runs `npm install` inside each project under YMMH control.
+
++ Intended to de run when just checked out the repository and not installed the dependencies yet.
++ If there are internal dependencies inside same monorepo then just running of `ydmh install` may be not enough to
+    build the dependents packages — the building of internal dependencies must be executed before build their dependents.
+  
+
+### `ydmh version`
+
+Executing the following actions for all packages under control of `ydmh`:
+
+1. Set the specified version in `package.json` via `npm version`
+2. Replacing the references to local dependencies with relative pats (e. g `"internal-package": "1.1.0"` will be replaced 
+     with something like `"internal-package": "../../internal-package"`).
+   It is the one of key differences with `npm workpases`, `yarn workspaces` and Lerna: instead of the dependencies hoisting,
+     YDMH creating the relative path based symlinks.
+3. Runs `npm install` to complete the switching to local dependencies.
+
+Once done, you can debug the local dependencies running the dependents.
+
++ You will be prompted which version must be set. 
+  Is must the valid version satisfies the `https://www.npmjs.com/package/semver` 
 
 
 ## API & How YDMH Works

@@ -6,11 +6,10 @@ import { ImprovedPath } from "@yamato-daiwa/es-extensions-nodejs";
 export default abstract class DependenciesUpdater {
 
   private static readonly npmCheckUpdatesScriptAbsolutePath: string =
-    ImprovedPath.joinPathSegments([
-      __dirname,
-      "..",
-      "node_modules/npm-check-updates/build/cli.js"
-    ]);
+      ImprovedPath.joinPathSegments([
+        process.cwd(),
+        "node_modules/@yamato-daiwa/monorepo-helper/node_modules/npm-check-updates/build/cli.js"
+      ]);
 
 
   public static async checkUpdatesAndInstallSelectedOnes(
@@ -44,28 +43,15 @@ export default abstract class DependenciesUpdater {
               "node",
               [
                 DependenciesUpdater.npmCheckUpdatesScriptAbsolutePath,
-                "--interactive"
+                "--interactive",
+                "--install",
+                "never"
               ],
               {
                 stdio: "inherit",
                 cwd: internalPackage.rootDirectoryAbsolutePath
               }
             );
-
-        // childProcess.on("message", (data: ChildProcess.Serializable) => {
-        //   console.log("MESSAGE");
-        //   console.log(`message: ${ data.toString() }`);
-        // });
-        //
-        // childProcess.stdout?.on("data", (data: unknown) => {
-        //   console.log("STDOUT");
-        //   console.log(`stdout: ${ data }`);
-        // });
-        //
-        // childProcess.stderr?.on("data", (data: unknown) => {
-        //   console.log("STDERR");
-        //   console.error(`stderr: ${ data }`);
-        // });
 
         childProcess.on(
           "close",

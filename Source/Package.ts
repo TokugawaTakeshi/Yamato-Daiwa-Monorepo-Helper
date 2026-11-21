@@ -7,7 +7,8 @@ import {
   isNotNull,
   Timer,
   Logger,
-  InvalidExternalDataError
+  InvalidExternalDataError,
+  SECONDS_COUNT_IN_MINUTE
 } from "@yamato-daiwa/es-extensions";
 import { ImprovedPath, NodeJS_Timer } from "@yamato-daiwa/es-extensions-nodejs";
 import * as FilesAndDirectoriesDeleter from "rimraf";
@@ -16,8 +17,8 @@ import Path from "path";
 
 class Package {
 
-  private static readonly PACKAGE_DEPENDENCIES_INSTALLATION_ATTEMPTS_LIMIT: number = 3;
-  private static readonly PACKAGE_DEPENDENCIES_REINSTALLATION_ATTEMPT_WAITING__SECONDS: number = 10;
+  private static readonly PACKAGE_DEPENDENCIES_INSTALLATION_ATTEMPTS_LIMIT: number = 10;
+  private static readonly PACKAGE_DEPENDENCIES_REINSTALLATION_ATTEMPT_WAITING__SECONDS: number = SECONDS_COUNT_IN_MINUTE;
 
   public readonly rootDirectoryAbsolutePath: string;
   public readonly rootDirectoryPathRelativeToMonorepoRoot: string;
@@ -38,11 +39,12 @@ class Package {
       monorepoRootDirectoryRelativePath,
       packageRootDirectoryPathRelativeToMonorepoRoot,
       productionBuildingScript
-    }: Readonly<{
-      monorepoRootDirectoryRelativePath: string;
-      packageRootDirectoryPathRelativeToMonorepoRoot: string;
-      productionBuildingScript: string;
-    }>
+    }:
+        Readonly<{
+          monorepoRootDirectoryRelativePath: string;
+          packageRootDirectoryPathRelativeToMonorepoRoot: string;
+          productionBuildingScript: string;
+        }>
   ): Promise<Package> {
 
     const projectRootDirectoryAbsolutePath: string =
@@ -66,12 +68,13 @@ class Package {
       packageRootDirectoryPathRelativeToMonorepoRoot,
       packageJSON,
       productionBuildingScript
-    }: Readonly<{
-      projectRootDirectoryAbsolutePath: string;
-      packageRootDirectoryPathRelativeToMonorepoRoot: string;
-      packageJSON: PackageJSON;
-      productionBuildingScript: string;
-    }>
+    }:
+        Readonly<{
+          projectRootDirectoryAbsolutePath: string;
+          packageRootDirectoryPathRelativeToMonorepoRoot: string;
+          packageJSON: PackageJSON;
+          productionBuildingScript: string;
+        }>
   ) {
 
     this.rootDirectoryAbsolutePath = projectRootDirectoryAbsolutePath;
@@ -369,10 +372,11 @@ class Package {
     {
       distributionTag,
       npmToken
-    }: Readonly<{
-      distributionTag?: string;
-      npmToken: string;
-    }>
+    }:
+        Readonly<{
+          distributionTag?: string;
+          npmToken: string;
+        }>
   ): Promise<void> {
 
     Logger.logInfo({
@@ -466,10 +470,11 @@ class Package {
     {
       distributionTag,
       npmToken
-    }: Readonly<{
-      distributionTag?: string;
-      npmToken: string;
-    }>
+    }:
+        Readonly<{
+          distributionTag?: string;
+          npmToken: string;
+        }>
   ): Promise<void> {
 
     if (isUndefined(this.metadataFile.content.version)) {

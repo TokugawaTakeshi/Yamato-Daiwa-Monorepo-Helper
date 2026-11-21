@@ -1,7 +1,7 @@
 import type Configuration from "../Configuration";
-import { isNotUndefined, splitString } from "@yamato-daiwa/es-extensions";
 import ChildProcess from "node:child_process";
-import {ImprovedPath} from "@yamato-daiwa/es-extensions-nodejs";
+import { isNotUndefined, splitString } from "@yamato-daiwa/es-extensions";
+import { ImprovedPath } from "@yamato-daiwa/es-extensions-nodejs";
 
 
 export default abstract class TasksExecutor {
@@ -147,9 +147,8 @@ export default abstract class TasksExecutor {
 
         childProcess.stderr?.on(
           "data",
-          (data: unknown): void => {
-            console.log("STDERR");
-            console.error(`stderr: ${ data }`);
+          (chunk: Buffer): void => {
+            process.stderr.write(chunk);
           }
         );
 
@@ -201,13 +200,12 @@ export default abstract class TasksExecutor {
 
         childProcess.on("error", reject);
 
-        // childProcess.stderr?.on(
-        //   "data",
-        //   (data: unknown): void => {
-        //     console.log("STDERR");
-        //     console.error(`stderr: ${ data }`);
-        //   }
-        // );
+        childProcess.stderr?.on(
+          "data",
+          (chunk: Buffer): void => {
+            process.stderr.write(chunk);
+          }
+        );
 
         childProcess.on("close", resolve);
 
